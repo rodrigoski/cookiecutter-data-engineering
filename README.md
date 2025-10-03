@@ -1,82 +1,177 @@
-# Proyecto de Scraping de Noticias y Análisis de Calidad de Datos
-**#fundamentosdeingeneriadedatos**
+# fundamentosdeingeneriadedatos
 
-## Descripción
+A short description of the project.
 
-Este proyecto implementa un sistema para la extracción de noticias de sitios web, incluyendo el análisis de la calidad de los datos, la serialización en formato **JSONL** y la validación mediante **contratos de datos**. El objetivo es aplicar de manera práctica los conceptos del ciclo de vida de los datos, desde su adquisición hasta su análisis de calidad.
+Proyecto de Scraping de Noticias y Análisis de Calidad de Datos
+Descripción
+Este proyecto lo qu ehace es que implementa un sistema de scraping para paginas web con noticias con análisis de de datos, serialización en formato JSONL y definición de contratos de datos.
+Objetivos
 
-***
+    Aplicar técnicas de web scraping en sitios de noticias
 
-## Flujo de Adquisición de Datos
+    Estructurar datos en formato JSON Lines (.jsonl)
 
-El proceso está automatizado en el script `src/scraper.py` y se divide en las siguientes fases:
+    Realizar perfilado de calidad de datos
 
-### Fase 1: Extracción (Scraping)
-* **Script**: `src/scraper.py`
-* **Función Clave**: `fetch_content()` y `parse_articles()`
-* **Entrada**: URL del portal de noticias de Reuters.
-* **Salida**: Una lista de diccionarios, donde cada diccionario representa una noticia.
+    Implementar contratos de datos
 
-### Fase 2: Serialización
-* **Script**: `src/scraper.py`
-* **Función Clave**: `serialize_to_jsonl()`
-* **Formato**: JSON Lines (`.jsonl`), donde cada noticia es un objeto JSON en una línea independiente.
-* **Ubicación**: `data/raw/noticias.jsonl`.
+    Documentar el ciclo completo de adquisición de datos
 
-### Fase 3: Perfilado de Calidad
-* **Script**: `src/scraper.py`
-* **Función Clave**: `generate_data_quality_report()`
-* **Métricas**: Se evalúa la completitud (nulos), unicidad (duplicados) y consistencia (formatos).
-* **Reporte**: Los resultados se guardan en `reports/perfilado.md`.
+Flujo de Adquisición de Datos
+Fase 1: Scraping
 
-### Fase 4: Contrato de Datos
-* **Archivo**: `contracts/schema.yaml`.
-* **Propósito**: Define formalmente la estructura, tipos de datos, formatos y restricciones que deben cumplir los datos extraídos.
+    Script: src/scraper.py
 
-***
+    Función: scrape_reuters_news()
 
-## Implementación del Scraper
+    Entrada: URLs de Reuters World News
 
-### Elección de la Fuente
-Se seleccionó **Reuters (World News)** por la consistencia de su estructura HTML, que utiliza atributos `data-testid` para identificar elementos clave, facilitando una extracción de datos más robusta y estable.
-* **URL**: `https://www.reuters.com/world/`
+    Salida: Lista de diccionarios con noticias
 
-### Tecnologías Utilizadas
-* **Requests**: Para realizar las peticiones HTTP y obtener el contenido de la página web.
-* **BeautifulSoup4**: Para el parseo del documento HTML y la extracción de datos mediante selectores CSS.
-* **Hashlib**: Para generar un identificador único (`id`) para cada noticia a partir de su URL.
+Fase 2: Serialización
 
-### Campos Extraídos
-Se extraen los siguientes campos para cada noticia:
-* **id**: Hash único generado para identificar el registro.
-* **titulo**: Título del artículo.
-* **fecha**: Fecha de publicación en formato `YYYY-MM-DD`.
-* **url**: Enlace completo a la noticia.
-* **fuente**: Nombre del sitio web ("Reuters").
-* **autor**: Nombre del autor o agencia.
-* **capturado_ts**: Timestamp de la captura en formato ISO 8601 (UTC).
+    Script: src/scraper.py
 
-***
+    Función: save_to_jsonl()
 
-## Calidad y Contrato de Datos
+    Formato: JSON Lines (.jsonl)
 
-### Reglas del Contrato de Datos
-El archivo `contracts/schema.yaml` establece las siguientes reglas:
-* **Campos Obligatorios**: `id`, `titulo`, `url`, `fuente`, `capturado_ts`.
-* **Restricciones**: El `id` y la `url` deben ser únicos. El campo `fuente` debe ser "Reuters".
-* **Formatos**: Se validan los formatos para campos como `fecha` (`YYYY-MM-DD`) y `capturado_ts` (ISO 8601).
+    Ubicación: data/raw/noticias.jsonl
 
-### Métricas de Calidad
-El reporte de perfilado (`reports/perfilado.md`) incluye:
-* **Completitud**: Porcentaje de valores nulos para cada campo.
-* **Unicidad**: Conteo de registros duplicados basados en `id` y `url`.
-* **Consistencia**: Verificación del formato correcto en fechas y URLs.
+Fase 3: Perfilado de Calidad
 
-***
+    Script: src/scraper.py
 
-## Instalación y Ejecución
+    Función: profile_results()
 
-### Requisitos
-Es necesario tener **Python 3.8+** y las siguientes librerías:
-```bash
+    Métricas: Nulos, duplicados, formatos
+
+    Reporte: reports/perfilado.md
+
+Fase 4: Data Contract
+
+    Archivo: contracts/schema.yaml
+
+    Propósito: Definir reglas de calidad
+
+    Validación: Tipos, formatos, restricciones
+
+Elección del Sitio
+Reuters World News
+
+URL: https://www.reuters.com/world/
+
+Implementación del Scraper
+Tecnologías Utilizadas
+
+    BeautifulSoup4: Parsing y navegación del HTML
+
+    Requests: Cliente HTTP para descargar contenido
+
+    Regex: Validación de formatos (fechas, URLs)
+
+    Hashlib: Generación de IDs únicos
+
+Estrategias de Scraping
+
+1. Selectores Múltiples
+   python
+
+selectors = [
+'article[data-testid="MediaStoryCard"]',
+'div[data-testid="MediaStoryCard"]',
+'li[data-testid="MediaStoryCard"]',
+'.media-story-card**body**3tRWy'
+]
+
+2. Fallback a RSS
+   python
+
+rss_urls = [
+"https://www.reuters.com/world/rss",
+"https://www.reuters.com/rssFeed/worldNews",
+]
+
+Campos Extraídos
+
+    id (hash único generado)
+
+    titulo
+
+    fecha (formato YYYY-MM-DD)
+
+    url (absoluta)
+
+    fuente ("Reuters")
+
+    autor
+
+    capturado_ts (timestamp UTC)
+
+    categoria ("World News")
+
+Data Contract
+Reglas Definidas en contracts/schema.yaml
+Campos Obligatorios
+
+    id: string, único, formato hash
+
+    titulo: string, 5-500 caracteres
+
+    url: string, formato http(s)
+
+    fuente: string, valor fijo "Reuters"
+
+    capturado_ts: datetime, formato ISO8601
+
+Campos Opcionales
+
+    fecha: date, formato YYYY-MM-DD
+
+    autor: string
+
+    categoria: string
+
+Reglas de Validación
+
+    URLs únicas
+
+    Fechas válidas (no futuras)
+
+    IDs únicos por hash
+
+Métricas de Calidad
+Implementadas en profile_results()
+
+    Completitud: Porcentaje de nulos por campo
+
+    Unicidad: Duplicados por ID y URL
+
+    Consistencia: Formatos de fecha y URL
+
+    Conformidad: Cumplimiento del data contract
+
+Reporte Generado
+
+    Resumen estadístico
+
+    Distribución de nulos
+
+    Identificación de duplicados
+
+    Recomendaciones de mejora
+
+Instalación y Ejecución
+Requisitos
+bash
+
 pip install requests beautifulsoup4
+
+Ejecución
+bash
+
+# Scraping directo
+
+# Con este script ejectuas la aplicación del scrapping para general el .jsonl necesitado
+
+python src/scraper.py --source reuters
