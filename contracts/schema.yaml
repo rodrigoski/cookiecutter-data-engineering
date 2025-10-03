@@ -1,0 +1,65 @@
+name: "news_data_contract"
+version: "1.0"
+description: "Contrato de datos para noticias scraped"
+
+fields:
+  - name: id
+    type: string
+    required: true
+    unique: true
+    pattern: "^[a-f0-9]{12}$"
+    description: "Identificador único generado por hash"
+
+  - name: titulo
+    type: string
+    required: true
+    min_length: 5
+    max_length: 500
+    description: "Título de la noticia"
+
+  - name: fecha
+    type: date
+    required: false
+    format: "YYYY-MM-DD"
+    description: "Fecha de publicación en formato ISO"
+
+  - name: url
+    type: string
+    required: true
+    pattern: "^https?://"
+    description: "URL completa de la noticia"
+
+  - name: fuente
+    type: string
+    required: true
+    allowed_values: ["Reuters"]
+    description: "Fuente de la noticia"
+
+  - name: autor
+    type: string
+    required: false
+    description: "Autor de la noticia"
+
+  - name: capturado_ts
+    type: datetime
+    required: true
+    format: "ISO8601"
+    description: "Timestamp de captura en UTC"
+
+  - name: categoria
+    type: string
+    required: false
+    description: "Categoría temática"
+
+rules:
+  - rule: "unique_urls"
+    description: "Las URLs deben ser únicas"
+    condition: "COUNT(DISTINCT url) = COUNT(url)"
+
+  - rule: "valid_dates"
+    description: "Las fechas deben ser válidas o nulas"
+    condition: "fecha IS NULL OR fecha ~ '^\\d{4}-\\d{2}-\\d{2}$'"
+
+  - rule: "future_dates_not_allowed"
+    description: "Las fechas no pueden ser futuras"
+    condition: "fecha <= CURRENT_DATE OR fecha IS NULL"
