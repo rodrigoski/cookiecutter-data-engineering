@@ -1,65 +1,76 @@
-name: "news_data_contract"
-version: "1.0"
-description: "Contrato de datos para noticias scraped"
+# Data Contract para el conjunto de datos de noticias extraídas.
+# Define la estructura esperada, los tipos de datos y las reglas de calidad.
 
-fields:
-  - name: id
-    type: string
-    required: true
-    unique: true
-    pattern: "^[a-f0-9]{12}$"
-    description: "Identificador único generado por hash"
+contract_name: "schema_noticias_extraidas"
+schema_version: "1.1"
+purpose: "Especificar la estructura y las restricciones de calidad para los registros de noticias obtenidos mediante web scraping."
 
-  - name: titulo
-    type: string
-    required: true
-    min_length: 5
-    max_length: 500
-    description: "Título de la noticia"
+dataset:
+  # Define las columnas y sus propiedades.
+  columns:
+    - name: id
+      type: string
+      description: "Identificador único de 16 caracteres (hash SHA1 de la URL)."
+      constraints:
+        required: true
+        unique: true
+        pattern: "^[a-f0-9]{16}$" # Actualizado para coincidir con el nuevo scraper
 
-  - name: fecha
-    type: date
-    required: false
-    format: "YYYY-MM-DD"
-    description: "Fecha de publicación en formato ISO"
+    - name: titulo
+      type: string
+      description: "El encabezado o título principal del artículo."
+      constraints:
+        required: true
+        min_length: 5
+        max_length: 500
 
-  - name: url
-    type: string
-    required: true
-    pattern: "^https?://"
-    description: "URL completa de la noticia"
+    - name: fecha
+      type: date
+      description: "Fecha de publicación del artículo en formato AAAA-MM-DD. Puede ser nulo si no está disponible."
+      nullable: true # Equivalente a required: false
+      format: "YYYY-MM-DD"
 
-  - name: fuente
-    type: string
-    required: true
-    allowed_values: ["Reuters"]
-    description: "Fuente de la noticia"
+    - name: url
+      type: string
+      description: "El enlace completo y directo al artículo original."
+      constraints:
+        required: true
+        pattern: "^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}" # Patrón de URL más genérico
 
-  - name: autor
-    type: string
-    required: false
-    description: "Autor de la noticia"
+    - name: fuente
+      type: string
+      description: "Nombre del sitio web de donde se extrajo la noticia."
+      constraints:
+        required: true
+        one_of: ["Reuters", "BBC Mundo", "El Universal"] # Permite futuras fuentes
 
-  - name: capturado_ts
-    type: datetime
-    required: true
-    format: "ISO8601"
-    description: "Timestamp de captura en UTC"
+    - name: autor
+      type: string
+      description: "El nombre del autor o la agencia que redactó la noticia. Puede ser nulo."
+      nullable: true
 
-  - name: categoria
-    type: string
-    required: false
-    description: "Categoría temática"
+    - name: capturado_ts
+      type: datetime
+      description: "Marca de tiempo en formato ISO 8601 (UTC) que indica cuándo se realizó la captura."
+      constraints:
+        required: true
+      format: "ISO8601"
 
-rules:
-  - rule: "unique_urls"
-    description: "Las URLs deben ser únicas"
-    condition: "COUNT(DISTINCT url) = COUNT(url)"
+    - name: categoria
+      type: string
+      description: "Categoría o sección a la que pertenece la noticia (ej. 'Mundo', 'Deportes')."
+      nullable: true
 
-  - rule: "valid_dates"
-    description: "Las fechas deben ser válidas o nulas"
-    condition: "fecha IS NULL OR fecha ~ '^\\d{4}-\\d{2}-\\d{2}$'"
+# Reglas de validación a nivel de conjunto de datos.
+quality_assertions:
+  - check: "unicidad_de_urls"
+    description: "Cada URL en el conjunto de datos debe ser única para evitar registros duplicados."
+    expression: "COUNT(DISTINCT url) = COUNT(url)"
 
-  - rule: "future_dates_not_allowed"
-    description: "Las fechas no pueden ser futuras"
-    condition: "fecha <= CURRENT_DATE OR fecha IS NULL"
+  - check: "formato_valido_de_fecha"
+    description: "El campo 'fecha' debe cumplir con el formato AAAA-MM-DD o ser nulo."
+    expression: "fecha IS NULL OR REGEXP_MATCHES(fecha, '^\\d{4}-\\d{2}-\\d{2}$')"
+
+  - check: "no_fechas_futuras"
+    description: "La fecha de publicación no puede ser posterior a la fecha actual."
+    expression: "fecha IS NULL OR fecha <= CURRENT_DATE"

@@ -1,45 +1,53 @@
-# Perfilado de Calidad - 2025-10-02T05:48:53.138297+00:00
+# Reporte de Calidad de Datos: Extracción de Noticias
 
-**Número total de registros:** 20
+- **Fuente Analizada:** Reuters
+- **Fecha de Generación:** 2025-10-02
 
+---
 
-## Porcentaje de valores nulos por campo:
+## Resumen General 
 
-- id: 0 nulos (0.00%)
+El análisis se realizó sobre un conjunto de **20 registros** extraídos. Los resultados generales indican una alta calidad en los datos capturados, sin valores nulos ni duplicados detectados.
 
-- titulo: 0 nulos (0.00%)
+---
 
-- fecha: 0 nulos (0.00%)
+##  1. Análisis de Completitud
 
-- url: 0 nulos (0.00%)
+No se encontraron valores ausentes en ninguno de los campos, lo que representa una completitud del 100% en el conjunto de datos.
 
-- fuente: 0 nulos (0.00%)
+| Campo         | Registros Nulos | Completitud |
+|---------------|-----------------|-------------|
+| `id`          | 0               | 100.00%     |
+| `titulo`      | 0               | 100.00%     |
+| `fecha`       | 0               | 100.00%     |
+| `url`         | 0               | 100.00%     |
+| `fuente`      | 0               | 100.00%     |
+| `autor`       | 0               | 100.00%     |
+| `capturado_ts`| 0               | 100.00%     |
+| `categoria`   | 0               | 100.00%     |
 
-- autor: 0 nulos (0.00%)
+---
 
-- capturado_ts: 0 nulos (0.00%)
+## 2. Verificación de Unicidad
 
-- categoria: 0 nulos (0.00%)
+El análisis confirma que no existen registros duplicados en el conjunto de datos.
 
+- **Unicidad de ID:** Se verificó que los 20 identificadores son únicos.
+- **Unicidad de URL:** Las 20 URLs son distintas entre sí.
 
-## Duplicados:
+---
 
-- Duplicados por URL: 0
+## 3. Consistencia de Formato
 
-- Duplicados por ID: 0
+Todos los registros cumplen con los formatos definidos en el contrato de datos.
 
+- **Formato de Fechas:** El 100% de las fechas (`20 de 20`) se ajustan al formato `YYYY-MM-DD`.
+- **Formato de URLs:** El 100% de las URLs (`20 de 20`) comienzan con `http(s)://`, validando su estructura.
 
-## Consistencia de formatos:
+---
 
-- Fechas con formato YYYY-MM-DD: 20/20
+## 4. Observaciones y Pasos a Seguir
 
-- URLs con formato http(s): 20/20
-
-
-## Observaciones / recomendaciones:
-
-- Verificar campos autor y fecha, suelen ser los más inconsistentes entre fuentes.
-
-- Considerar usar feeds RSS/JSON oficiales o APIs cuando estén disponibles para mayor estabilidad.
-
-- Validar que todos los IDs sean únicos para evitar duplicados.
+1.  **Monitoreo Continuo:** Aunque esta extracción fue exitosa, los campos `autor` y `fecha` a menudo varían en sitios de noticias. Se recomienda mantener una vigilancia constante sobre ellos en futuras extracciones.
+2.  **Explorar Fuentes Estables:** Para mejorar la robustez del scraper a largo plazo, se sugiere investigar si la fuente (Reuters) ofrece un **feed RSS o una API pública**, ya que estos suelen ser más estables que la estructura del HTML.
+3.  **Garantizar la Unicidad:** La estrategia de generar IDs únicos a partir de las URLs demostró ser efectiva. Es crucial mantener esta validación para prevenir la ingesta de datos duplicados en el futuro.

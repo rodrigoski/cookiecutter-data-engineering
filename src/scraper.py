@@ -3,318 +3,241 @@ from bs4 import BeautifulSoup
 import json
 import hashlib
 from datetime import datetime, timezone
-import time
-import os
-import re
-import argparse
 import random
+import time
+from pathlib import Path
+import re
+from collections import defaultdict
+import argparse
 
-def get_headers():
-    user_agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+# --- Constantes y Configuración ---
+
+# Se elige Reuters como fuente de datos según las opciones proporcionadas.
+# URL: https://www.reuters.com/world/ [cite: 11]
+SOURCE_URL = "https://www.reuters.com/world/"
+SOURCE_NAME = "Reuters"
+
+# Define las rutas de salida para los datos y reportes.
+# Los entregables son el archivo de datos y el reporte de perfilado. [cite: 53, 55]
+OUTPUT_DATA_DIR = Path("data/raw")
+OUTPUT_REPORTS_DIR = Path("reports")
+OUTPUT_FILE = OUTPUT_DATA_DIR / "noticias.jsonl"
+REPORT_FILE = OUTPUT_REPORTS_DIR / "perfilado.md"
+
+def get_random_user_agent():
+    """Selecciona un User-Agent aleatorio para simular un navegador real."""
+    USER_AGENTS = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0',
     ]
-    
-    return {
-        'User-Agent': random.choice(user_agents),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9,es;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0',
-    }
+    return random.choice(USER_AGENTS)
 
-def generate_id(url, title):
-    content = f"{url}_{title}".encode('utf-8')
-    return hashlib.md5(content).hexdigest()[:12]
+# --- Clase Principal del Scraper ---
 
-def scrape_reuters_news():
-    urls_to_try = [
-        "https://www.reuters.com/world/",
-        "https://www.reuters.com/news/archive/worldNews",
-    ]
-    
-    articles = []
-    
-    for url in urls_to_try:
+class NewsScraper:
+    """
+    Una clase para encapsular la lógica de scraping de un sitio de noticias.
+    """
+    def __init__(self, url, source_name):
+        self.url = url
+        self.source_name = source_name
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': get_random_user_agent(),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive',
+            'DNT': '1',
+        })
+        print(f"Scraper inicializado para la fuente: {self.source_name}")
+
+    def _generate_id(self, text_input):
+        """Genera un ID único basado en el hash del texto de entrada (URL)."""
+        return hashlib.sha1(text_input.encode('utf-8')).hexdigest()[:16]
+
+    def fetch_content(self):
+        """Realiza la petición HTTP para obtener el contenido de la página."""
         try:
-            print(f"Intentando con URL: {url}")
-            response = requests.get(url, headers=get_headers(), timeout=15)
-            
-            if response.status_code == 403:
-                print("✓ Acceso bloqueado (403). Intentando con sesión...")
-                session = requests.Session()
-                session.headers.update(get_headers())
-                response = session.get(url, timeout=15)
-            
-            response.raise_for_status()
-            print("✓ Conexión exitosa")
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            selectors = [
-                'article[data-testid="MediaStoryCard"]',
-                'div[data-testid="MediaStoryCard"]',
-                'li[data-testid="MediaStoryCard"]',
-                'a[data-testid="Heading"]',  
-                '.media-story-card__body__3tRWy',  
-            ]
-            
-            for selector in selectors:
-                news_items = soup.select(selector)[:25]
-                if news_items:
-                    print(f"✓ Encontrados {len(news_items)} elementos con selector: {selector}")
-                    break
-            else:
-                news_items = soup.find_all(['article', 'div'], class_=re.compile(r'(card|story|article|news)'))[:25]
-                print(f"✓ Encontrados {len(news_items)} elementos con búsqueda general")
-            
-            for item in news_items[:20]: 
-                try:
-                    title = None
-                    title_selectors = [
-                        'h2', 'h3', 'h4',
-                        '[data-testid="Heading"]',
-                        '.media-story-card__title__',
-                        '.text__text__1FZLe',
-                        'a[data-testid="Link"]'
-                    ]
-                    
-                    for title_selector in title_selectors:
-                        title_elem = item.select_one(title_selector)
-                        if title_elem and title_elem.get_text().strip():
-                            title = title_elem.get_text().strip()
-                            break
-                    
-                    if not title:
-                        continue
-                    
-                    link = None
-                    link_elem = item.find('a', href=True)
-                    if link_elem:
-                        link = link_elem['href']
-                        if link and link.startswith('/'):
-                            link = f"https://www.reuters.com{link}"
-                    
-                    if not link:
-                        continue
-                    
-                    fecha = datetime.now().strftime('%Y-%m-%d')  
-                    time_elem = item.find('time')
-                    if time_elem and time_elem.get('datetime'):
-                        try:
-                            fecha_str = time_elem['datetime']
-                            fecha_dt = datetime.fromisoformat(fecha_str.replace('Z', '+00:00'))
-                            fecha = fecha_dt.strftime('%Y-%m-%d')
-                        except:
-                            pass
-                    
-                    author = "Reuters"
-                    author_selectors = ['span', 'p', 'div']
-                    for author_selector in author_selectors:
-                        author_elem = item.select_one(f'{author_selector}[class*="author"], {author_selector}[class*="byline"]')
-                        if author_elem and author_elem.get_text().strip():
-                            author_text = author_elem.get_text().strip()
-                            if 'Reuters' not in author_text and len(author_text) < 50:
-                                author = author_text
-                                break
-                    
-                    article_data = {
-                        "id": generate_id(link, title),
-                        "titulo": title,
-                        "fecha": fecha,
-                        "url": link,
-                        "fuente": "Reuters",
-                        "autor": author,
-                        "capturado_ts": datetime.now(timezone.utc).isoformat(),
-                        "categoria": "World News"
-                    }
-                    
-                    articles.append(article_data)
-                    print(f"  ✓ Noticia: {title[:50]}...")
-                    
-                except Exception as e:
-                    print(f"  ✗ Error procesando artículo: {e}")
-                    continue
-            
-            if articles:
-                break  
-                
-            time.sleep(2)  
-            
-        except requests.RequestException as e:
-            print(f"✗ Error con {url}: {e}")
-            continue
-        except Exception as e:
-            print(f"✗ Error inesperado con {url}: {e}")
-            continue
-    
-    return articles
+            response = self.session.get(self.url, timeout=20)
+            response.raise_for_status()  # Lanza una excepción para códigos de error HTTP
+            print(f"✓ Contenido de {self.url} obtenido con éxito.")
+            return response.text
+        except requests.exceptions.RequestException as e:
+            print(f"✗ Error al intentar obtener la página: {e}")
+            return None
 
-def scrape_reuters_alternative():
-    print("Intentando método alternativo con RSS...")
+    def parse_articles(self, html_content, max_articles=25):
+        """Parsea el HTML para extraer y estructurar los datos de las noticias."""
+        if not html_content:
+            return []
+
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Estrategia de búsqueda de contenedores de noticias
+        # Se priorizan selectores específicos y luego se usan genéricos.
+        article_containers = soup.select('li[data-testid="MediaStoryCard"]')
+        if not article_containers:
+             article_containers = soup.select('div[data-testid="MediaStoryCard"]')
+        if not article_containers:
+            print("! No se encontraron contenedores con selectores primarios, intentando con selectores de respaldo.")
+            article_containers = soup.find_all(class_=re.compile("story-card|media-story"))
+
+        scraped_news = []
+        for article_html in article_containers[:max_articles]:
+            title_element = article_html.select_one('a[data-testid="Heading"]')
+            link_element = article_html.find('a', href=True)
+            
+            if not (title_element and link_element and link_element.get('href')):
+                continue
+
+            title = title_element.get_text(strip=True)
+            relative_url = link_element['href']
+            
+            # Construye la URL completa si es relativa
+            full_url = relative_url if relative_url.startswith('http') else f"https://www.reuters.com{relative_url}"
+
+            # Extrae la fecha si está disponible
+            date_element = article_html.find('time')
+            iso_date = datetime.now().strftime('%Y-%m-%d') # Fecha por defecto
+            if date_element and date_element.has_attr('datetime'):
+                try:
+                    iso_date = datetime.fromisoformat(date_element['datetime'].replace('Z', '+00:00')).strftime('%Y-%m-%d')
+                except ValueError:
+                    pass # Mantiene la fecha por defecto si el formato es inesperado
+
+            # El autor rara vez está en la página principal, se asigna un valor por defecto.
+            author = "Reuters Staff" # Campo `autor` es requerido [cite: 18]
+
+            news_item = {
+                "id": self._generate_id(full_url),
+                "titulo": title,
+                "fecha": iso_date, # Formato ISO si es posible [cite: 15]
+                "url": full_url,
+                "fuente": self.source_name,
+                "autor": author,
+                "capturado_ts": datetime.now(timezone.utc).isoformat() # Timestamp de captura [cite: 19]
+            }
+            scraped_news.append(news_item)
+            print(f"  -> Noticia extraída: '{title[:40]}...'")
+
+        return scraped_news
+
+# --- Funciones de Apoyo ---
+
+def serialize_to_jsonl(data, file_path):
+    """
+    Guarda una lista de diccionarios en un archivo con formato JSON Lines.
+    Cada noticia es un objeto JSON en una nueva línea. [cite: 21, 23]
+    """
+    try:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            for item in data:
+                f.write(json.dumps(item, ensure_ascii=False) + '\n')
+        print(f"✓ {len(data)} registros guardados en {file_path}")
+    except IOError as e:
+        print(f"✗ Error al escribir en el archivo {file_path}: {e}")
+
+def generate_data_quality_report(records):
+    """
+    Analiza los datos recolectados y genera un reporte en formato Markdown.
+    El reporte incluye total de registros, nulos, duplicados y consistencia. [cite: 27, 29-32]
+    """
+    if not records:
+        return "No se encontraron registros para analizar."
+
+    total_records = len(records)
+    null_counts = defaultdict(int)
+    url_set = set()
+    id_set = set()
     
-    rss_urls = [
-        "https://www.reuters.com/world/rss",
-        "https://www.reuters.com/rssFeed/worldNews",
+    date_format_regex = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+    url_format_regex = re.compile(r'^https?://')
+    
+    valid_dates = 0
+    valid_urls = 0
+
+    for record in records:
+        for key, value in record.items():
+            if value is None or (isinstance(value, str) and not value.strip()):
+                null_counts[key] += 1
+        
+        # Conteo de duplicados y validación de formatos
+        url_set.add(record.get("url"))
+        id_set.add(record.get("id"))
+        if record.get("fecha") and date_format_regex.match(record.get("fecha")):
+            valid_dates += 1
+        if record.get("url") and url_format_regex.match(record.get("url")):
+            valid_urls += 1
+
+    # Construcción del reporte
+    report = [
+        f"# Reporte de Calidad de Datos - {datetime.now(timezone.utc).date()}",
+        f"**Fuente de Datos:** {records[0].get('fuente', 'N/A')}\n",
+        f"## 1. Resumen General",
+        f"- **Número total de registros:** {total_records}\n",
+        f"## 2. Completitud (Valores Nulos)",
+        "| Campo          | % Nulos |",
+        "|----------------|---------|",
     ]
     
-    articles = []
-    
-    for rss_url in rss_urls:
-        try:
-            response = requests.get(rss_url, headers=get_headers(), timeout=10)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.content, 'xml')
-            items = soup.find_all('item')[:20]
-            
-            for item in items:
-                try:
-                    title = item.title.get_text().strip() if item.title else None
-                    link = item.link.get_text().strip() if item.link else None
-                    
-                    if title and link:
-                        fecha = datetime.now().strftime('%Y-%m-%d')
-                        if item.pubDate:
-                            try:
-                                fecha_dt = datetime.strptime(item.pubDate.get_text(), '%a, %d %b %Y %H:%M:%S %Z')
-                                fecha = fecha_dt.strftime('%Y-%m-%d')
-                            except:
-                                pass
-                        
-                        article_data = {
-                            "id": generate_id(link, title),
-                            "titulo": title,
-                            "fecha": fecha,
-                            "url": link,
-                            "fuente": "Reuters",
-                            "autor": "Reuters Staff",
-                            "capturado_ts": datetime.now(timezone.utc).isoformat(),
-                            "categoria": "World News"
-                        }
-                        articles.append(article_data)
-                        print(f"  ✓ RSS Noticia: {title[:50]}...")
-                        
-                except Exception as e:
-                    print(f"  ✗ Error procesando item RSS: {e}")
-                    continue
-            
-            if articles:
-                break
-                
-        except Exception as e:
-            print(f"✗ Error con RSS {rss_url}: {e}")
-            continue
-    
-    return articles
+    fields = list(records[0].keys())
+    for field in fields:
+        percentage = (null_counts[field] / total_records) * 100
+        report.append(f"| {field:<14} | {percentage:.2f}%   |")
 
-def save_to_jsonl(articles, filename):
-    """Guarda los artículos en formato JSONL"""
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    
-    with open(filename, 'w', encoding='utf-8') as f:
-        for article in articles:
-            f.write(json.dumps(article, ensure_ascii=False) + '\n')
+    report.extend([
+        "\n## 3. Unicidad",
+        f"- **IDs únicos:** {len(id_set)} de {total_records} (Duplicados: {total_records - len(id_set)})",
+        f"- **URLs únicas:** {len(url_set)} de {total_records} (Duplicados: {total_records - len(url_set)})\n",
+        "## 4. Consistencia de Formato",
+        f"- **Fechas en formato YYYY-MM-DD:** {valid_dates / total_records:.2%}",
+        f"- **URLs con prefijo http(s)://:** {valid_urls / total_records:.2%}"
+    ])
 
-def profile_results(records: list) -> str:
-    total = len(records)
-    fields = ["id", "titulo", "fecha", "url", "fuente", "autor", "capturado_ts", "categoria"]
-    null_counts = {f: 0 for f in fields}
-    urls = []
-    ids = []
-    date_format_ok = 0
-    url_format_ok = 0
+    return "\n".join(report)
 
-    for r in records:
-        for f in fields:
-            if not r.get(f):
-                null_counts[f] += 1
-        urls.append(r.get("url"))
-        ids.append(r.get("id"))
-        if r.get("fecha"):
-            if re.match(r"^\d{4}-\d{2}-\d{2}$", r.get("fecha")):
-                date_format_ok += 1
-        if r.get("url") and re.match(r"^https?://", r.get("url")):
-            url_format_ok += 1
-
-    dup_urls = len(urls) - len(set(urls))
-    dup_ids = len(ids) - len(set(ids))
-
-    lines = []
-    lines.append(f"# Perfilado de Calidad - {datetime.now(timezone.utc).isoformat()}\n")
-    lines.append(f"**Número total de registros:** {total}\n")
-    lines.append("\n## Porcentaje de valores nulos por campo:\n")
-    for f in fields:
-        pct = (null_counts[f] / total * 100) if total else 0
-        lines.append(f"- {f}: {null_counts[f]} nulos ({pct:.2f}%)\n")
-
-    lines.append("\n## Duplicados:\n")
-    lines.append(f"- Duplicados por URL: {dup_urls}\n")
-    lines.append(f"- Duplicados por ID: {dup_ids}\n")
-
-    lines.append("\n## Consistencia de formatos:\n")
-    lines.append(f"- Fechas con formato YYYY-MM-DD: {date_format_ok}/{total}\n")
-    lines.append(f"- URLs con formato http(s): {url_format_ok}/{total}\n")
-
-    lines.append("\n## Observaciones / recomendaciones:\n")
-    lines.append("- Verificar campos autor y fecha, suelen ser los más inconsistentes entre fuentes.\n")
-    lines.append("- Considerar usar feeds RSS/JSON oficiales o APIs cuando estén disponibles para mayor estabilidad.\n")
-    lines.append("- Validar que todos los IDs sean únicos para evitar duplicados.\n")
-
-    return "\n".join(lines)
+# --- Punto de Entrada Principal ---
 
 def main():
-    parser = argparse.ArgumentParser(description='Scraping de noticias y perfilado de calidad')
-    parser.add_argument('--source', default='reuters', choices=['reuters'],
-                       help='Fuente de noticias (por defecto: reuters)')
-    parser.add_argument('--use-rss', action='store_true', 
-                       help='Usar RSS como fuente alternativa')
-    
+    """Función principal que orquesta el proceso de scraping y reporte."""
+    parser = argparse.ArgumentParser(description="Web scraper de noticias para Reuters.")
+    parser.add_argument(
+        "--max",
+        type=int,
+        default=25,
+        help="Número máximo de artículos a intentar extraer."
+    )
     args = parser.parse_args()
-    
-    print("Iniciando scraping de noticias...")
-    
-    if args.use_rss:
-        articles = scrape_reuters_alternative()
-    else:
-        articles = scrape_reuters_news()
-        if not articles:
-            print("Scraping directo falló, intentando con RSS...")
-            articles = scrape_reuters_alternative()
-    
-    if articles:
-        output_file = "data/raw/noticias.jsonl"
-        save_to_jsonl(articles, output_file)
-        print(f"✓ {len(articles)} noticias guardadas en {output_file}")
-        
-        perfil = profile_results(articles)
-        report_dir = "reports"
-        os.makedirs(report_dir, exist_ok=True)
-        report_file = os.path.join(report_dir, "perfilado.md")
-        
-        with open(report_file, "w", encoding="utf-8") as f:
-            f.write(perfil)
-        print(f"✓ Reporte de perfilado generado en {report_file}")
-        
-        print(f"\nResumen:")
-        print(f"- Noticias obtenidas: {len(articles)}")
-        print(f"- Archivo de datos: {output_file}")
-        print(f"- Reporte de calidad: {report_file}")
-        
-    else:
-        print("✗ No se pudieron obtener noticias. Posibles soluciones:")
-        print("  1. Verificar conexión a internet")
-        print("  2. Intentar con: python src/scraper.py --use-rss")
-        print("  3. Usar un VPN o cambiar red")
-        print("  4. Esperar y reintentar más tarde")
 
-if __name__ == '__main__':
+    print("--- Iniciando Proceso de Extracción de Noticias ---")
+    scraper = NewsScraper(SOURCE_URL, SOURCE_NAME)
+    
+    # Simula un comportamiento más humano con una pequeña pausa
+    time.sleep(random.uniform(1, 3))
+    
+    html = scraper.fetch_content()
+    
+    if html:
+        articles = scraper.parse_articles(html, max_articles=args.max)
+        
+        if articles:
+            # Serializa los datos en JSONL
+            serialize_to_jsonl(articles, OUTPUT_FILE)
+            
+            # Genera y guarda el reporte de calidad
+            report_content = generate_data_quality_report(articles)
+            REPORT_FILE.parent.mkdir(parents=True, exist_ok=True)
+            REPORT_FILE.write_text(report_content, encoding="utf-8")
+            print(f"✓ Reporte de calidad generado en: {REPORT_FILE}")
+            
+            print("\n--- Proceso Finalizado con Éxito ---")
+            print(f"Total de noticias procesadas: {len(articles)}")
+        else:
+            print("✗ No se pudieron extraer artículos. El HTML del sitio pudo haber cambiado.")
+    else:
+        print("✗ No se pudo obtener el contenido de la página. Verifique la conexión o posibles bloqueos.")
+
+if __name__ == "__main__":
     main()
